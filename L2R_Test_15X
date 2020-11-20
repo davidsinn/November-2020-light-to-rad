@@ -1,0 +1,126 @@
+from pylinac.core.image import DicomImage, ArrayImage
+from pylinac.core.profile import SingleProfile
+from pylinac import ct
+
+import pydicom
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
+import math
+
+
+#-------------------------------------------------------
+#Preliminary code setup: File, pixel spacing, profiles
+#-------------------------------------------------------
+ds = pydicom.dcmread(BIN_FILE.path)
+
+arr = ds.pixel_array
+
+#Get values from dicom tags for corrected px/mm at iso
+sid = round(ds.RTImageSID, 1)
+sad = round(ds.RadiationMachineSAD, 1)
+px_spac_at_sid = np.mean(ds.ImagePlanePixelSpacing)
+px_spac_corr = px_spac_at_sid * (sad/sid)
+
+arr_img = ArrayImage(arr, sid=sid)
+
+
+#Get central row/col for the line profile
+array_size_x = arr_img.shape[1]
+array_size_y = arr_img.shape[0]
+#print(f'Array size (x):{array_size_x} Array size(y):{array_size_y}')
+mid_array_x = int(array_size_x/2)
+mid_array_y = int(array_size_y/2)
+
+#Detect if the image needs inverting by checking pixel value of center vs corner.
+if (arr_img[mid_array_x, mid_array_y] <= arr_img[0,0]):
+    arr_img.invert()
+    
+#Get array for row/col to plot as single profile
+row = arr_img[mid_array_y, :]
+col = arr_img[: , mid_array_x]
+
+
+x_prof = SingleProfile(row)
+y_prof = SingleProfile(col)
+
+
+#ground profiles such that minimum = 0
+x_prof.ground()
+y_prof.ground()
+
+
+#-------------------------------------
+#Radiation Field Size and Center
+#-------------------------------------
+#Find central coordinate of the radiation field from the profile's full width half max
+# x : int, meaning: the percent height of the profile. E.g. x = 50 is 50% height,  i.e. FWHM.
+x_rad_center = round(x_prof.fwxm_center(x=50, interpolate=True), 2)
+y_rad_center = round(y_prof.fwxm_center(x=50, interpolate=True), 2)
+rad_center_coords = (x_rad_center, y_rad_center)
+
+#Find the radiation field size
+x_edges = x_prof.field_edges(field_width=1, interpolate=True)
+x_size_px = x_edges[1]-x_edges[0]
+x_size_mm = x_size_px*px_spac_corr
+
+y_edges = y_prof.field_edges(field_width=1, interpolate=True)
+y_size_px = y_edges[1]-y_edges[0]
+y_size_mm = y_size_px*px_spac_corr
+
+#Crossplane Results:
+#Positive (+) = Light shifted towards linac A, Negative (-) = Light shifted linac B
+#Inplane Results:
+#Positive (+) = Light shifted towards Gantry, Negative (-) = Light shifted towards Target
+
+#---------------------------------------------
+#Dictionary of results for QATrack+
+#---------------------------------------------
+
+L2R_Test_15X = {'Radiation size crossplane': round(x_size_mm,1),
+                             'Radiation size inplane': round(y_size_mm,1),
+                             'X1 edge': x_edges[0],
+                             'X2 edge': x_edges[1],
+                             'Y1 edge': y_edges[1],
+                             'Y2 edge': y_edges[0],
+                             'Corrected pixel conversion': px_spac_corr
+                             }
+
+
+#------------------------
+# Plotting the image
+#------------------------
+#Plot image with lines showing crossplane and inplane.
+fig, ax = plt.subplots(1)
+plt.imshow(ds.pixel_array, cmap=plt.cm.bone)
+# Draw line to visualise where profiles taken from and compare light and rad centers.
+ax.axvline(x=x_rad_center, c='b')
+ax.axhline(y=y_rad_center, c='b')
+#ax.axvline(x=x_light_center, c='r')
+#ax.axhline(y=y_light_center, c='r')
+ax.axvline(x=mid_array_x, c='g')
+ax.axhline(y=mid_array_y, c='g')
+# Create a Rectangle patch outlining the radiation field
+rec_roi = patches.Rectangle((x_edges[0], y_edges[0]),
+                            x_size_px, y_size_px,
+                            linewidth=1,edgecolor='b',facecolor='none')
+# Add the patch to the Axes
+ax.add_patch(rec_roi)
+#Add points to show BB locations
+#ax.scatter(*zip(*centers), c='purple')
+#Add points to visualise the offset edges (used for radiation angle calculation)
+#ax.scatter(*zip(*list(offset_edges.values())), c='orange')
+
+
+#Add text labels to plot
+fig.text(0.5, 0.9, 'Y2', color='w', fontsize=20, transform=ax.transAxes)
+fig.text(0.5, 0.05, 'Y1', color='w', fontsize=20, transform=ax.transAxes)
+fig.text(0.05, 0.55, 'X1', color='w', fontsize=20, transform=ax.transAxes)
+fig.text(0.9, 0.55, 'X2', color='w', fontsize=20, transform=ax.transAxes)
+
+fig.tight_layout()
+plt.show()
+
+
+#Un-comment below to convert the image to a png file so it can be displayed when performing the test list in QATrack+
+UTILS.write_file('Light-Rad-image.png', fig)
