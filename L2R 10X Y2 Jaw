@@ -1,0 +1,8 @@
+y_light_center = L2R_Test_6X['Y light center']
+px_spac_corr = L2R_Test_10X['Corrected pixel conversion']
+y2_edge = L2R_Test_10X['Y2 edge']
+
+y2_field_size = round((y_light_center-y2_edge)*px_spac_corr,1)
+
+
+_L2R_10X_y2_jaw = y2_field_size
