@@ -1,0 +1,8 @@
+x_light_center = L2R_Test_6X['X light center']
+px_spac_corr = L2R_Test_6X['Corrected pixel conversion']
+x2_edge = L2R_Test_6X['X2 edge']
+
+x2_field_size = round((x2_edge-x_light_center)*px_spac_corr,1)
+
+
+_L2R_6X_x2_jaw = x2_field_size
